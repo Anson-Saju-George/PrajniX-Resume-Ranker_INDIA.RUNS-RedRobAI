@@ -8,6 +8,7 @@ from engine.stages.scoring import CandidateFeatures
 
 JD_IDEAL_EXPERIENCE_MIN = 6.0
 JD_IDEAL_EXPERIENCE_MAX = 8.0
+MATERIAL_OVERBAND_NOTE_THRESHOLD = 10.0
 
 
 def _fit_sentence(candidate: Candidate, features: CandidateFeatures) -> str:
@@ -50,11 +51,11 @@ def _append_experience_adjustment(
     """Explain an applied over-band adjustment using observed years and JD bounds."""
 
     years = candidate.profile.years_of_experience
-    penalty_applied = (
-        years > JD_IDEAL_EXPERIENCE_MAX
+    material_penalty_applied = (
+        years > MATERIAL_OVERBAND_NOTE_THRESHOLD
         and features.experience.band_fit < 1.0
     )
-    if not penalty_applied:
+    if not material_penalty_applied:
         return sentence
 
     sentence_without_period = sentence.removesuffix(".")

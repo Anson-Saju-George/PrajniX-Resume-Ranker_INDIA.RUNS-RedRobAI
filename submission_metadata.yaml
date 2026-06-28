@@ -1,0 +1,78 @@
+# Redrob Hackathon submission metadata
+
+participant_id: PrajniX
+team_name: PrajniX
+project_name: TalentGate AI
+submission_filename: PrajniX.csv
+
+primary_contact:
+  name: Anson Saju George
+  email: ansonsaju007@gmail.com
+  phone: "+91 9061342741"
+
+team_members:
+  - name: Anson Saju George
+    email: ansonsaju007@gmail.com
+    role: Leader
+  - name: Rakesh Shankar
+    email: rakeshshankar0308@gmail.com
+  - name: Haresh Subramanian
+    email: hareshp.s1066@gmail.com
+
+github_repo: https://github.com/Anson-Saju-George/PrajniX-Resume-Ranker_INDIA.RUNS-RedRobAI
+sandbox_link: "TBD — Docker/Colab recipe being finalized (see README, added next step)"
+reproduce_command: python experiments/run_variants.py
+
+compute_environment: "Windows, 64 GB RAM, Python 3.14.4 (CPU-only during ranking; no GPU used)"
+compute:
+  platform: Windows
+  cpu_cores: "NOT PROVIDED — team confirmation required"
+  ram_gb: 64
+  python_version: "3.14.4"
+  os: Windows
+  uses_gpu_for_inference: false
+  has_network_during_ranking: false
+  pre_computation_required: true
+  pre_computation_time_minutes: 1.33
+
+ai_tools_used:
+  - Claude
+  - ChatGPT
+  - "Other (OpenAI Codex CLI)"
+
+ai_tools_declared:
+  - Claude
+  - ChatGPT
+  - "Other (OpenAI Codex CLI)"
+
+ai_usage_summary: >
+  Claude, ChatGPT, and OpenAI Codex CLI were used for design discussion, code
+  generation, debugging assistance, documentation, and review. All ranking
+  logic is deterministic and human-reviewed; no AI model or external API runs
+  in the judged ranking pipeline.
+
+methodology_summary: >
+  TalentGate AI ranks 100,000 candidates against one JD under a CPU-only, no-network,
+  sub-5-minute budget. A deterministic integrity shield runs first, suppressing honeypots
+  and impossible profiles (reversed salary, active-before-signup, expert-skill-zero-months,
+  future certifications, title-vs-skill incoherence) — validated against dataset-wide
+  contradiction counts. Recall is dual-channel: a structured-fit pass over all candidates
+  unioned with lexical/dense retrieval (RRF), so plain-language strong candidates are not
+  lost to templated text. Scoring is gates-vs-compensatory with asymmetric experience-band
+  fit (ideal 6-8; over-band penalized) and behavioral-availability down-weighting, keying on
+  cross-field coherence rather than keywords. Reasoning is template-generated from real
+  fields only (zero hallucination). The dataset is unlabeled, so weights were tuned on a
+  hand-judged, stratified 80-row validation set using judged-only NDCG@10/@50, MAP, P@10.
+  Final run: ~30s, CPU-only, deterministic, 0% honeypot rate in the top 100.
+
+declarations:
+  read_submission_spec: true
+  code_is_original_work: "NOT PROVIDED — team confirmation required"
+  no_collusion: "NOT PROVIDED — team confirmation required"
+  honeypot_check_done: true
+  reproduction_tested: true
+
+fields_requiring_team_confirmation:
+  - compute.cpu_cores
+  - declarations.code_is_original_work
+  - declarations.no_collusion

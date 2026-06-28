@@ -27,12 +27,12 @@ class CandidateFeatures:
 
 @dataclass(frozen=True, slots=True)
 class AspectScores:
-    ai_retrieval_fit: float
-    python_product_engineering_fit: float
-    production_career_relevance: float
-    experience_band_fit: float
-    behavioral_availability: float
-    integrity_confidence: float
+    skills: float
+    career: float
+    production: float
+    experience: float
+    availability: float
+    integrity: float
 
 
 @dataclass(frozen=True, slots=True)
@@ -98,12 +98,12 @@ def score_candidate(
     )
 
     aspects = AspectScores(
-        ai_retrieval_fit=min(ai_retrieval, 1.0) * 100.0,
-        python_product_engineering_fit=min(python_product, 1.0) * 100.0,
-        production_career_relevance=min(production_career, 1.0) * 100.0,
-        experience_band_fit=features.experience.band_fit * 100.0,
-        behavioral_availability=features.availability.availability_fit * 100.0,
-        integrity_confidence=min(integrity_confidence, 1.0) * 100.0,
+        skills=min(ai_retrieval, 1.0) * 100.0,
+        career=min(python_product, 1.0) * 100.0,
+        production=min(production_career, 1.0) * 100.0,
+        experience=features.experience.band_fit * 100.0,
+        availability=features.availability.availability_fit * 100.0,
+        integrity=min(integrity_confidence, 1.0) * 100.0,
     )
     base_score = sum(
         getattr(aspects, name) * float(weight) for name, weight in weights.items()

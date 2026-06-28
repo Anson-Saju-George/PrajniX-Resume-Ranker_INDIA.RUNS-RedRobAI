@@ -1,5 +1,16 @@
-variant: B
-description: "Score every non-suppressed candidate with corroborated JD-derived aspects."
+default_variant: B
+description: "Config-driven variant harness; Phase 3 keeps A and D as score-everyone fallbacks."
+
+variants:
+  B:
+    recall_mode: B_score_everyone
+    penalty_strength: light
+  A:
+    recall_mode: A_retrieval_first
+    penalty_strength: light
+  D:
+    recall_mode: D_dual_channel
+    penalty_strength: light
 
 jd_policy:
   hard_gates_from_integrity:
@@ -28,23 +39,34 @@ jd_policy:
     behavioral_unavailability: "behavioral availability aspect plus Phase 1 penalties"
 
 # Frozen from docs/PRD.md section 4b. Values sum to 1.0.
-weights:
-  ai_retrieval_fit: 0.30
-  python_product_engineering_fit: 0.15
-  production_career_relevance: 0.25
-  experience_band_fit: 0.10
-  behavioral_availability: 0.12
-  integrity_confidence: 0.08
+aspect_weights:
+  skills: 0.30
+  career: 0.15
+  production: 0.25
+  experience: 0.10
+  availability: 0.12
+  integrity: 0.08
 
 # Phase 1 soft flags are multiplicative confidence penalties, never removals.
-penalties:
-  salary_range_reversed: 0.98
-  last_active_before_signup: 0.95
-  skill_duration_impossible: 0.90
-  long_notice_period: 0.95
-  long_notice_period_severe: 0.88
-  low_recruiter_response_rate: 0.90
-  low_profile_completeness: 0.92
+penalty_profiles:
+  light:
+    salary_range_reversed: 0.98
+    last_active_before_signup: 0.95
+    skill_duration_impossible: 0.90
+    long_notice_period: 0.95
+    long_notice_period_severe: 0.88
+    low_recruiter_response_rate: 0.90
+    low_profile_completeness: 0.92
+  heavy:
+    # Registered for config compatibility only. Phase 5 will define/tune the
+    # heavy profile; mirroring light here prevents Phase 3 from changing behavior.
+    salary_range_reversed: 0.98
+    last_active_before_signup: 0.95
+    skill_duration_impossible: 0.90
+    long_notice_period: 0.95
+    long_notice_period_severe: 0.88
+    low_recruiter_response_rate: 0.90
+    low_profile_completeness: 0.92
 
 reference_date: "2026-06-01"
 top_k: 100

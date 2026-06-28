@@ -12,6 +12,7 @@ from engine.data import Candidate, stream_candidates
 from engine.stages.integrity import IntegrityResult, check_candidate_integrity
 from engine.stages.output import SubmissionRow, validate_submission_rows
 from engine.stages.penalties import PenaltyResult, apply_penalties
+from engine.stages.recall import apply_recall_mode, uses_score_everyone_fallback
 from engine.stages.reasoning import build_reasoning
 from engine.stages.scoring import (
     CandidateFeatures,
@@ -32,13 +33,19 @@ class _TopCandidate:
 
 
 @dataclass(frozen=True, slots=True)
-class PipelineResult:
+class _PipelineResult:
     rows: tuple[SubmissionRow, ...]
     debug_top100: tuple[dict[str, Any], ...]
     source_candidate_ids: frozenset[str]
     records_streamed: int
     hard_suppressed: int
     survivors_scored: int
+    recall_mode: str
+    recall_fallback_to_score_everyone: bool
+    evaluation_scores: dict[str, float]
+
+
+__all__ = ["rank_candidates"]
 
 
 def _debug_record(rank: int, item: _TopCandidate, reasoning: str) -> dict[str, Any]:
@@ -79,7 +86,7 @@ def rank_candidates(
     dataset: str | Path,
     jd: str | Path,
     config: Mapping[str, Any],
-) -> PipelineResult:
+) -> _PipelineResult:
     """Stream and score every surviving candidate, retaining only the best 100."""
 
     dataset_path = Path(dataset)
@@ -88,8 +95,7 @@ def rank_candidates(
         raise FileNotFoundError(dataset_path)
     if not jd_path.is_file():
         raise FileNotFoundError(jd_path)
-    if config.get("variant") != "B":
-        raise ValueError("This Phase 2 pipeline implements variant B only")
+    recall_mode = str(config["recall_mode"])
 
     top_k = int(config.get("top_k", 100))
     if top_k != 100:
@@ -102,8 +108,11 @@ def rank_candidates(
     records_streamed = 0
     hard_suppressed = 0
     survivors_scored = 0
+    evaluation_ids = set(config.get("_evaluation_candidate_ids", ()))
+    evaluation_scores: dict[str, float] = {}
 
-    for candidate in stream_candidates(dataset_path):
+    candidates = apply_recall_mode(stream_candidates(dataset_path), recall_mode)
+    for candidate in candidates:
         records_streamed += 1
         if candidate.candidate_id in source_ids:
             raise ValueError(f"Duplicate candidate ID: {candidate.candidate_id}")
@@ -112,12 +121,16 @@ def rank_candidates(
         integrity = check_candidate_integrity(candidate)
         if integrity["hard_suppress"]:
             hard_suppressed += 1
+            if candidate.candidate_id in evaluation_ids:
+                evaluation_scores[candidate.candidate_id] = -1.0
             continue
 
         features = extract_features(candidate, reference_date)
         scoring = score_candidate(candidate, features, config)
         penalties = apply_penalties(scoring.base_score, integrity, config)
         final_score = round(penalties.final_score, decimals)
+        if candidate.candidate_id in evaluation_ids:
+            evaluation_scores[candidate.candidate_id] = final_score
         survivors_scored += 1
 
         item = _TopCandidate(
@@ -155,11 +168,19 @@ def rank_candidates(
         debug.append(_debug_record(rank, item, reasoning))
 
     guarded_rows = validate_submission_rows(rows, source_ids)
-    return PipelineResult(
+    missing_evaluation_ids = evaluation_ids - set(evaluation_scores)
+    if missing_evaluation_ids:
+        raise ValueError(
+            f"Evaluation IDs absent from candidate stream: {sorted(missing_evaluation_ids)[:5]}"
+        )
+    return _PipelineResult(
         rows=tuple(guarded_rows),
         debug_top100=tuple(debug),
         source_candidate_ids=frozenset(source_ids),
         records_streamed=records_streamed,
         hard_suppressed=hard_suppressed,
         survivors_scored=survivors_scored,
+        recall_mode=recall_mode,
+        recall_fallback_to_score_everyone=uses_score_everyone_fallback(recall_mode),
+        evaluation_scores=evaluation_scores,
     )

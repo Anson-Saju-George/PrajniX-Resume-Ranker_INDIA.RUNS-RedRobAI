@@ -25,7 +25,31 @@ from engine.pipeline import rank_candidates  # noqa: E402
 from engine.stages.output import write_submission  # noqa: E402
 
 
-REGISTERED_VARIANTS = ("A", "B", "D")
+REGISTERED_VARIANTS = (
+    "A",
+    "B",
+    "D",
+    "D_base",
+    "D_overband_mild",
+    "D_overband_strong",
+    "D_avail_light",
+    "D_avail_heavy",
+    "D_overband_strong_avail_heavy",
+)
+OVERBAND_CANARY = "CAND_0039754"
+NOT_OPEN_PROBES = ("CAND_0009837", "CAND_0057134", "CAND_0086062")
+AVAILABLE_LABEL3_PROBES = (
+    "CAND_0046064",
+    "CAND_0018499",
+    "CAND_0079387",
+    "CAND_0052682",
+    "CAND_0037980",
+    "CAND_0068811",
+    "CAND_0055905",
+)
+ALL_PROBES = frozenset(
+    (OVERBAND_CANARY, *NOT_OPEN_PROBES, *AVAILABLE_LABEL3_PROBES)
+)
 AI_DOMAIN_TITLE_MARKERS = (
     "ai ",
     "artificial intelligence",
@@ -66,6 +90,7 @@ def _load_harness_config(path: Path) -> dict[str, Any]:
         "aspect_weights",
         "penalty_profiles",
         "recall",
+        "experience_profiles",
         "reference_date",
         "top_k",
         "score_decimals",
@@ -88,6 +113,9 @@ def _resolve_variant(
     strength = variant["penalty_strength"]
     if strength not in harness["penalty_profiles"]:
         raise ValueError(f"Unknown penalty_strength {strength!r}")
+    experience_profile = variant.get("experience_profile", "base")
+    if experience_profile not in harness["experience_profiles"]:
+        raise ValueError(f"Unknown experience_profile {experience_profile!r}")
     recall_config = dict(harness["recall"])
     recall_config["artifact_dir"] = str(
         (REPOSITORY_ROOT / recall_config["artifact_dir"]).resolve()
@@ -98,12 +126,16 @@ def _resolve_variant(
         "penalty_strength": strength,
         "weights": dict(harness["aspect_weights"]),
         "penalties": dict(harness["penalty_profiles"][strength]),
+        "experience_profile": experience_profile,
+        "experience_band_fits": dict(
+            harness["experience_profiles"][experience_profile]
+        ),
         "reference_date": harness["reference_date"],
         "top_k": harness["top_k"],
         "score_decimals": harness["score_decimals"],
         "recall": recall_config,
         "_evaluation_candidate_ids": evaluation_ids,
-        "_probe_candidate_ids": {"CAND_0039754"},
+        "_probe_candidate_ids": ALL_PROBES,
     }
 
 
@@ -223,6 +255,7 @@ def _run_variant(
         "recall_mode": result.recall_mode,
         "recall_fallback_to_score_everyone": result.recall_fallback_to_score_everyone,
         "penalty_strength": config["penalty_strength"],
+        "experience_profile": config["experience_profile"],
         "records_streamed": result.records_streamed,
         "hard_suppressed": result.hard_suppressed,
         "survivors_scored": result.survivors_scored,
@@ -256,6 +289,7 @@ def _run_variant(
         "recall_mode": result.recall_mode,
         "recall_fallback_to_score_everyone": result.recall_fallback_to_score_everyone,
         "penalty_strength": config["penalty_strength"],
+        "experience_profile": config["experience_profile"],
         "runtime_seconds": round(runtime, 3),
         "top100_honeypot_proxy_count": honeypot_count,
         "top100_honeypot_proxy_rate": honeypot_count / 100.0,
@@ -272,7 +306,7 @@ def _run_variant(
         "format_checks": csv_checks,
         "judge_metrics_status": judge_status,
         "sanity_probes": {
-            "CAND_0039754_full_scored_rank": result.probe_positions.get("CAND_0039754"),
+            "full_scored_ranks": result.probe_positions,
             "known_good_label_gte_2_in_top100": (
                 sum(
                     judge_labels.get(item["candidate_id"], -1) >= 2
@@ -309,28 +343,33 @@ def _run_variant(
 
 
 def _write_leaderboard(
-    output_root: Path, metrics_by_variant: Mapping[str, Mapping[str, Any]]
+    output_root: Path,
+    metrics_by_variant: Mapping[str, Mapping[str, Any]],
+    variant_order: list[str],
 ) -> Path:
-    """Write the frozen recall comparison using judged-only relevance metrics."""
+    """Append or replace the current tuning section in the shared leaderboard."""
 
     leaderboard_path = output_root / "leaderboard.md"
+    phase5b = any(name.startswith("D_") for name in variant_order)
+    heading = "# Phase 5B Weight and Penalty Leaderboard" if phase5b else "# Phase 5A Recall Leaderboard"
     lines = [
-        "# Phase 5A Recall Leaderboard",
+        heading,
         "",
         "All relevance metrics rank only the 80 judged candidates. No unjudged top-100 row is treated as irrelevant.",
         "",
-        "| Variant | Recall mode | NDCG@10 | NDCG@50 | MAP | P@10 | Honeypot proxy | Runtime (s) | Validator | Known-good in top 100 |",
-        "|---|---|---:|---:|---:|---:|---:|---:|---|---:|",
+        "| Variant | Experience | Penalties | NDCG@10 | NDCG@50 | MAP | P@10 | Honeypot proxy | Runtime (s) | Validator | Known-good in top 100 |",
+        "|---|---|---|---:|---:|---:|---:|---:|---:|---|---:|",
     ]
-    for variant_name in ("A", "B", "D"):
+    for variant_name in variant_order:
         metrics = metrics_by_variant[variant_name]
         judged = metrics["judge_metrics"]
         probes = metrics["sanity_probes"]
         lines.append(
-            "| {variant} | {mode} | {n10:.6f} | {n50:.6f} | {map_value:.6f} | "
+            "| {variant} | {experience} | {penalties} | {n10:.6f} | {n50:.6f} | {map_value:.6f} | "
             "{p10:.6f} | {trap:.2%} | {runtime:.3f} | {validator} | {known_good} |".format(
                 variant=variant_name,
-                mode=metrics["recall_mode"],
+                experience=metrics["experience_profile"],
+                penalties=metrics["penalty_strength"],
                 n10=judged["NDCG@10"],
                 n50=judged["NDCG@50"],
                 map_value=judged["MAP"],
@@ -341,8 +380,29 @@ def _write_leaderboard(
                 known_good=probes["known_good_label_gte_2_in_top100"],
             )
         )
-    leaderboard_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    new_section = "\n".join(lines) + "\n"
+    if phase5b and leaderboard_path.is_file():
+        existing = leaderboard_path.read_text(encoding="utf-8")
+        prefix = existing.split(heading, 1)[0].rstrip()
+        content = f"{prefix}\n\n{new_section}" if prefix else new_section
+    else:
+        content = new_section
+    leaderboard_path.write_text(content, encoding="utf-8")
     return leaderboard_path
+
+
+def _print_probe_table(
+    metrics_by_variant: Mapping[str, Mapping[str, Any]], variant_order: list[str]
+) -> None:
+    """Print exact full-score ranks for the Phase 5B decision canaries."""
+
+    probe_order = (OVERBAND_CANARY, *NOT_OPEN_PROBES, *AVAILABLE_LABEL3_PROBES)
+    print("Probe ranks (full scored D-union ranking; '-' means not recalled/suppressed):")
+    print("variant | " + " | ".join(probe_order))
+    for variant_name in variant_order:
+        ranks = metrics_by_variant[variant_name]["sanity_probes"]["full_scored_ranks"]
+        values = [str(ranks.get(candidate_id) or "-") for candidate_id in probe_order]
+        print(f"{variant_name} | " + " | ".join(values))
 
 
 def parse_args() -> argparse.Namespace:
@@ -389,20 +449,18 @@ def main() -> int:
         )
         metrics_by_variant[variant_name] = metrics
         all_passed &= passed
-    if set(metrics_by_variant) == {"A", "B", "D"} and judge_labels is not None:
-        leaderboard_path = _write_leaderboard(args.output_root, metrics_by_variant)
+    if metrics_by_variant and judge_labels is not None:
+        leaderboard_path = _write_leaderboard(
+            args.output_root, metrics_by_variant, list(args.variant)
+        )
         print(f"leaderboard={leaderboard_path.resolve()}")
-        for variant_name in ("A", "B", "D"):
+        for variant_name in args.variant:
             probes = metrics_by_variant[variant_name]["sanity_probes"]
             print(
                 f"{variant_name}: known label>=2 in top100="
                 f"{probes['known_good_label_gte_2_in_top100']}"
             )
-        for variant_name in ("B", "D"):
-            rank = metrics_by_variant[variant_name]["sanity_probes"][
-                "CAND_0039754_full_scored_rank"
-            ]
-            print(f"{variant_name}: CAND_0039754 full scored rank={rank}")
+        _print_probe_table(metrics_by_variant, list(args.variant))
     after_hash = _sha256(candidates_path)
     unchanged = before_hash == after_hash
     print(f"{'PASS' if unchanged else 'FAIL'}: candidates.jsonl SHA-256 unchanged")

@@ -11,6 +11,31 @@ variants:
   D:
     recall_mode: D_dual_channel
     penalty_strength: light
+    experience_profile: base
+  D_base:
+    recall_mode: D_dual_channel
+    penalty_strength: light
+    experience_profile: base
+  D_overband_mild:
+    recall_mode: D_dual_channel
+    penalty_strength: light
+    experience_profile: overband_mild
+  D_overband_strong:
+    recall_mode: D_dual_channel
+    penalty_strength: light
+    experience_profile: overband_strong
+  D_avail_light:
+    recall_mode: D_dual_channel
+    penalty_strength: light
+    experience_profile: base
+  D_avail_heavy:
+    recall_mode: D_dual_channel
+    penalty_strength: heavy
+    experience_profile: base
+  D_overband_strong_avail_heavy:
+    recall_mode: D_dual_channel
+    penalty_strength: heavy
+    experience_profile: overband_strong
 
 recall:
   artifact_dir: data/recall
@@ -56,6 +81,22 @@ aspect_weights:
   availability: 0.12
   integrity: 0.08
 
+# Only over-qualified bands change across profiles. Under-qualified fits retain
+# the frozen asymmetric curve from experience_features.py.
+experience_profiles:
+  base:
+    slightly_over: 0.90
+    over: 0.78
+    well_over: 0.65
+  overband_mild:
+    slightly_over: 0.75
+    over: 0.52
+    well_over: 0.30
+  overband_strong:
+    slightly_over: 0.60
+    over: 0.32
+    well_over: 0.10
+
 # Phase 1 soft flags are multiplicative confidence penalties, never removals.
 penalty_profiles:
   light:
@@ -66,16 +107,20 @@ penalty_profiles:
     long_notice_period_severe: 0.88
     low_recruiter_response_rate: 0.90
     low_profile_completeness: 0.92
+    not_open_to_work: 1.00
+    stale_last_active: 1.00
   heavy:
-    # Registered for config compatibility only. Phase 5 will define/tune the
-    # heavy profile; mirroring light here prevents Phase 3 from changing behavior.
+    # Availability-specific factors are stronger; unrelated integrity factors
+    # stay frozen so this experiment isolates knob 3.
     salary_range_reversed: 0.98
     last_active_before_signup: 0.95
     skill_duration_impossible: 0.90
-    long_notice_period: 0.95
-    long_notice_period_severe: 0.88
-    low_recruiter_response_rate: 0.90
+    long_notice_period: 0.88
+    long_notice_period_severe: 0.70
+    low_recruiter_response_rate: 0.75
     low_profile_completeness: 0.92
+    not_open_to_work: 0.75
+    stale_last_active: 0.80
 
 reference_date: "2026-06-01"
 top_k: 100

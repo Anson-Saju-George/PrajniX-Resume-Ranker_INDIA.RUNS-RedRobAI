@@ -70,6 +70,14 @@ def score_candidate(
 
     weights = config["weights"]
     _validate_weights(weights)
+    experience_overrides = config.get("experience_band_fits", {})
+    experience_fit = float(
+        experience_overrides.get(
+            features.experience.band, features.experience.band_fit
+        )
+    )
+    if not 0.0 <= experience_fit <= 1.0:
+        raise ValueError("Configured experience-band fit must be in [0, 1]")
 
     ai_retrieval = (
         0.45 * features.production.production_fit
@@ -101,7 +109,7 @@ def score_candidate(
         skills=min(ai_retrieval, 1.0) * 100.0,
         career=min(python_product, 1.0) * 100.0,
         production=min(production_career, 1.0) * 100.0,
-        experience=features.experience.band_fit * 100.0,
+        experience=experience_fit * 100.0,
         availability=features.availability.availability_fit * 100.0,
         integrity=min(integrity_confidence, 1.0) * 100.0,
     )

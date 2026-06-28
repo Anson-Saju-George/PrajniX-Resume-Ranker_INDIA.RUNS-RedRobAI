@@ -23,6 +23,8 @@ SEVERE_NOTICE_DAYS = 90
 LOW_RESPONSE_RATE = 0.30
 LOW_PROFILE_COMPLETENESS = 50.0
 RECENT_CODING_MONTHS = 18
+STALE_ACTIVITY_DAYS = 180
+ACTIVITY_REFERENCE_DATE = date(2026, 6, 1)
 
 
 AI_SKILL_NAMES = frozenset(
@@ -322,6 +324,33 @@ def low_profile_completeness(candidate: Candidate) -> IntegrityFlag:
     )
 
 
+def not_open_to_work(candidate: Candidate) -> IntegrityFlag:
+    """Expose explicit unavailability as evidence for configurable penalties."""
+
+    open_to_work = candidate.redrob_signals.open_to_work_flag
+    if open_to_work:
+        return _flag("not_open_to_work")
+    return _flag("not_open_to_work", {"open_to_work_flag": open_to_work})
+
+
+def stale_last_active(candidate: Candidate) -> IntegrityFlag:
+    """Flag activity older than six months using the frozen scoring date."""
+
+    last_active = date.fromisoformat(candidate.redrob_signals.last_active_date)
+    days_since_active = max((ACTIVITY_REFERENCE_DATE - last_active).days, 0)
+    if days_since_active <= STALE_ACTIVITY_DAYS:
+        return _flag("stale_last_active")
+    return _flag(
+        "stale_last_active",
+        {
+            "last_active_date": candidate.redrob_signals.last_active_date,
+            "reference_date": ACTIVITY_REFERENCE_DATE.isoformat(),
+            "days_since_active": days_since_active,
+            "threshold_days": STALE_ACTIVITY_DAYS,
+        },
+    )
+
+
 def keyword_stuffer(candidate: Candidate) -> IntegrityFlag:
     """Detect the JD's non-AI-title plus unsupported AI-keyword contradiction."""
 
@@ -461,6 +490,8 @@ SOFT_CHECKS: tuple[IntegrityCheck, ...] = (
     long_notice_period,
     low_recruiter_response,
     low_profile_completeness,
+    not_open_to_work,
+    stale_last_active,
 )
 
 HARD_FLAG_NAMES = frozenset(
@@ -483,5 +514,7 @@ SOFT_FLAG_NAMES = frozenset(
         "long_notice_period",
         "low_recruiter_response_rate",
         "low_profile_completeness",
+        "not_open_to_work",
+        "stale_last_active",
     }
 )

@@ -1,0 +1,22 @@
+# Raw challenge data must never enter version control.
+candidates.jsonl
+
+# Generated reports and runtime artifacts.
+outputs/
+cache/
+artifacts/
+*.npy
+*.npz
+*.pkl
+*.parquet
+*.log
+
+# Python environments and bytecode.
+__pycache__/
+.venv/
+venv/
+.env
+
+# Archive metadata created by macOS.
+__MACOSX/
+.DS_Store

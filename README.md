@@ -4,19 +4,14 @@ TalentGate AI is an evaluation framework for robust JD-aware ranking. It determi
 
 ## Reproduce (Stage 3)
 
-Place `candidates.jsonl` and its supplied `candidate_schema.json` at the repository root. The committed precomputed artifacts must exist under `data/recall/`. Then run exactly:
+Place `candidates.jsonl`, `candidate_schema.json`, and `job_description.docx` at the repository root. Rebuild the gitignored retrieval artifacts, then run the locked ranker with this exact two-step sequence:
 
 ```bash
+python scripts/precompute.py --candidates ./candidates.jsonl --jd ./job_description.docx
 python rank.py --candidates ./candidates.jsonl --out ./PrajniX.csv
 ```
 
-`rank.py` loads the locked `D_overband_mild_avail_heavy` configuration. It does not compute embeddings. If the local artifacts are absent, build them offline before the timed ranking run:
-
-```bash
-python scripts/precompute.py --candidates ./candidates.jsonl --output-dir ./data/recall
-```
-
-The precompute step is outside the judged ranking runtime and may take longer than five minutes. The ranking command prints its runtime, SHA-256, and—when the committed reference is present—a byte-identity comparison against `outputs/PrajniX.csv`.
+`scripts/precompute.py` regenerates `data/recall/`. Precomputation is outside the judged ranking runtime and may exceed five minutes, as permitted by the challenge. `rank.py` then loads those artifacts and the locked `D_overband_mild_avail_heavy` configuration; it never computes embeddings. The rank step is CPU-only, uses no network or API, and completes in under five minutes. It writes `PrajniX.csv` and prints its runtime, SHA-256, and—when the approved reference is present—a byte-identity comparison against `outputs/PrajniX.csv`.
 
 ## Architecture and methodology
 
@@ -88,7 +83,7 @@ The organizer supplies `sample_submission.csv` only as a format reference. It ra
 - No network or external API calls during ranking.
 - Ranking runtime is approximately 30 seconds and below five minutes.
 - Streaming input and memory-mapped artifacts keep ranking below 16 GB RAM.
-- Candidate and JD vectors are precomputed offline under `data/` and only loaded at rank time.
+- Candidate and JD vectors are regenerated offline by `scripts/precompute.py` under `data/recall/` and only loaded at rank time. The directory is gitignored and is not supplied by the repository.
 - Equal scores tie-break by `candidate_id` ascending.
 - Dependencies are pinned exactly in `requirements.txt`.
 
@@ -115,6 +110,8 @@ The container runs `rank.py` and emits `/app/PrajniX_sandbox.csv`. Its console o
 ## AI-tool declaration
 
 Claude, ChatGPT, and OpenAI Codex CLI were used for design discussion, code generation, debugging, documentation, and review. All ranking logic is deterministic and human-reviewed. No AI model, hosted LLM, or external API runs in the judged ranking pipeline.
+
+See [AI_TOOLS.md](./AI_TOOLS.md) for the full declaration.
 
 ## Limitations and future work
 

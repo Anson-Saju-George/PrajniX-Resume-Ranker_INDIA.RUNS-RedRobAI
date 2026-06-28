@@ -18,16 +18,6 @@ python scripts/precompute.py --candidates ./candidates.jsonl --output-dir ./data
 
 The precompute step is outside the judged ranking runtime and may take longer than five minutes. The ranking command prints its runtime, SHA-256, and—when the committed reference is present—a byte-identity comparison against `outputs/PrajniX.csv`.
 
-### Docker sandbox
-
-The Docker image uses a committed 100-candidate fixture, builds a matching local retrieval artifact during image construction, and runs entirely on CPU without the full 487 MB dataset:
-
-```bash
-docker build -t talentgate . && docker run --rm talentgate
-```
-
-The container runs `rank.py` end-to-end and emits `/app/PrajniX_sandbox.csv`. Its console output includes runtime and SHA-256.
-
 ## Architecture and methodology
 
 ### Engine/product split
@@ -39,6 +29,8 @@ submission = rank_candidates(dataset, jd, config)
 ```
 
 Configuration and experiment orchestration live outside the engine. The locked configuration is `D_dual_channel` recall, `overband_mild` experience fit, and heavy behavioral-availability penalties.
+
+`experiments/run_variants.py` is the experiment harness used to compare configurations; it is not the Stage-3 reproduction entry point.
 
 ### Eight-stage pipeline
 
@@ -90,7 +82,7 @@ The final full run is deterministic, takes approximately 30 seconds on the devel
 
 The organizer supplies `sample_submission.csv` only as a format reference. It ranks an **HR Manager at #1**, which is the title/keyword incoherence trap the challenge explicitly warns about. Its order and scores are not training labels.
 
-## Reproducibility constraints
+## Reproducibility
 
 - CPU-only ranking; the RTX 5080 GPU is not used.
 - No network or external API calls during ranking.
@@ -100,13 +92,24 @@ The organizer supplies `sample_submission.csv` only as a format reference. It ra
 - Equal scores tie-break by `candidate_id` ascending.
 - Dependencies are pinned exactly in `requirements.txt`.
 
+### Section 10.5 Docker sandbox
+
+The Docker sandbox uses the committed 100-candidate fixture and runs the ranking end-to-end on CPU, without the full 487 MB dataset, in well under five minutes:
+
+```bash
+docker build -t talentgate .
+docker run --rm talentgate
+```
+
+The container runs `rank.py` and emits `/app/PrajniX_sandbox.csv`. Its console output includes runtime and SHA-256.
+
 ## Compute environment
 
 - Development machine: HP OMEN MAX
 - CPU: Intel Ultra 7 255HX (20 cores)
 - RAM: 64 GB
-- Development OS/runtime: Windows, Python 3.14.4
-- Reproducible container: `python:3.11-slim`
+- Development OS/runtime: Windows; developed on Python 3.14.4
+- Reproducible Docker environment: pinned to `python:3.11-slim`
 - GPU present: RTX 5080; not used during ranking
 
 ## AI-tool declaration

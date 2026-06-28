@@ -1,1 +1,4 @@
 D_dual_channel
+scoring_variant=D_overband_mild_avail_heavy
+experience_profile=overband_mild
+penalty_profile=heavy

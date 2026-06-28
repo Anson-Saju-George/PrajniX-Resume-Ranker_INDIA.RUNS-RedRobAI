@@ -25,17 +25,6 @@ from engine.pipeline import rank_candidates  # noqa: E402
 from engine.stages.output import write_submission  # noqa: E402
 
 
-REGISTERED_VARIANTS = (
-    "A",
-    "B",
-    "D",
-    "D_base",
-    "D_overband_mild",
-    "D_overband_strong",
-    "D_avail_light",
-    "D_avail_heavy",
-    "D_overband_strong_avail_heavy",
-)
 OVERBAND_CANARY = "CAND_0039754"
 NOT_OPEN_PROBES = ("CAND_0009837", "CAND_0057134", "CAND_0086062")
 AVAILABLE_LABEL3_PROBES = (
@@ -351,6 +340,17 @@ def _write_leaderboard(
 
     leaderboard_path = output_root / "leaderboard.md"
     phase5b = any(name.startswith("D_") for name in variant_order)
+    if phase5b:
+        # Preserve prior Phase 5B rows by rebuilding from the saved per-variant
+        # metrics. This lets one config-only tiebreaker append cleanly.
+        saved_metrics: dict[str, Mapping[str, Any]] = {}
+        for metrics_path in output_root.glob("D_*/metrics.json"):
+            payload = json.loads(metrics_path.read_text(encoding="utf-8"))
+            if payload.get("judge_metrics_status") == "available":
+                saved_metrics[str(payload["variant"])] = payload
+        saved_metrics.update(metrics_by_variant)
+        metrics_by_variant = saved_metrics
+        variant_order = sorted(saved_metrics)
     heading = "# Phase 5B Weight and Penalty Leaderboard" if phase5b else "# Phase 5A Recall Leaderboard"
     lines = [
         heading,
@@ -408,7 +408,9 @@ def _print_probe_table(
 def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run one or more registered variants")
     parser.add_argument(
-        "--variant", nargs="+", required=True, choices=REGISTERED_VARIANTS
+        "--variant",
+        nargs="+",
+        help="Variant names declared under configs/scoring.yaml; defaults to default_variant",
     )
     parser.add_argument("--config", type=Path, default=Path("configs/scoring.yaml"))
     parser.add_argument(
@@ -436,7 +438,8 @@ def main() -> int:
     before_hash = _sha256(candidates_path)
     all_passed = True
     metrics_by_variant: dict[str, dict[str, Any]] = {}
-    for variant_name in args.variant:
+    variant_names = list(args.variant or [harness["default_variant"]])
+    for variant_name in variant_names:
         metrics, passed = _run_variant(
             variant_name,
             harness,
@@ -451,16 +454,16 @@ def main() -> int:
         all_passed &= passed
     if metrics_by_variant and judge_labels is not None:
         leaderboard_path = _write_leaderboard(
-            args.output_root, metrics_by_variant, list(args.variant)
+            args.output_root, metrics_by_variant, variant_names
         )
         print(f"leaderboard={leaderboard_path.resolve()}")
-        for variant_name in args.variant:
+        for variant_name in variant_names:
             probes = metrics_by_variant[variant_name]["sanity_probes"]
             print(
                 f"{variant_name}: known label>=2 in top100="
                 f"{probes['known_good_label_gte_2_in_top100']}"
             )
-        _print_probe_table(metrics_by_variant, list(args.variant))
+        _print_probe_table(metrics_by_variant, variant_names)
     after_hash = _sha256(candidates_path)
     unchanged = before_hash == after_hash
     print(f"{'PASS' if unchanged else 'FAIL'}: candidates.jsonl SHA-256 unchanged")

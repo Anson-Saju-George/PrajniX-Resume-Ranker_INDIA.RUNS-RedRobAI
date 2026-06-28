@@ -1,5 +1,5 @@
-default_variant: B
-description: "Config-driven recall comparison with regression-locked scoring and penalties."
+default_variant: D_overband_mild_avail_heavy
+description: "Locked Phase 5C configuration: dual-channel recall, mild over-band curve, heavy availability penalties."
 
 variants:
   B:
@@ -36,6 +36,10 @@ variants:
     recall_mode: D_dual_channel
     penalty_strength: heavy
     experience_profile: overband_strong
+  D_overband_mild_avail_heavy:
+    recall_mode: D_dual_channel
+    penalty_strength: heavy
+    experience_profile: overband_mild
 
 recall:
   artifact_dir: data/recall

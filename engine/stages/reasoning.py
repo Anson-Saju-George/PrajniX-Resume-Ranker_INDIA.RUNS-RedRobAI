@@ -6,6 +6,10 @@ from engine.data import Candidate
 from engine.stages.scoring import CandidateFeatures
 
 
+JD_IDEAL_EXPERIENCE_MIN = 6.0
+JD_IDEAL_EXPERIENCE_MAX = 8.0
+
+
 def _fit_sentence(candidate: Candidate, features: CandidateFeatures) -> str:
     production_roles = features.production.relevant_roles
     if production_roles:
@@ -40,11 +44,34 @@ def _fit_sentence(candidate: Candidate, features: CandidateFeatures) -> str:
     )
 
 
+def _append_experience_adjustment(
+    sentence: str, candidate: Candidate, features: CandidateFeatures
+) -> str:
+    """Explain an applied over-band adjustment using observed years and JD bounds."""
+
+    years = candidate.profile.years_of_experience
+    penalty_applied = (
+        years > JD_IDEAL_EXPERIENCE_MAX
+        and features.experience.band_fit < 1.0
+    )
+    if not penalty_applied:
+        return sentence
+
+    sentence_without_period = sentence.removesuffix(".")
+    return (
+        f"{sentence_without_period}; over-band penalty applied "
+        f"({years:.1f} yrs vs {JD_IDEAL_EXPERIENCE_MIN:.0f}-"
+        f"{JD_IDEAL_EXPERIENCE_MAX:.0f} ideal)."
+    )
+
+
 def build_reasoning(candidate: Candidate, features: CandidateFeatures) -> str:
     """Create exactly two factual sentences using only stored candidate fields."""
 
     signals = candidate.redrob_signals
-    fit = _fit_sentence(candidate, features)
+    fit = _append_experience_adjustment(
+        _fit_sentence(candidate, features), candidate, features
+    )
     availability = (
         f"Last active {signals.last_active_date}; open-to-work is "
         f"{'yes' if signals.open_to_work_flag else 'no'}, recruiter response rate is "

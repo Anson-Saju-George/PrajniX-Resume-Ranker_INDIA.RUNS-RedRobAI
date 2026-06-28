@@ -1,5 +1,5 @@
 default_variant: B
-description: "Config-driven variant harness; Phase 3 keeps A and D as score-everyone fallbacks."
+description: "Config-driven recall comparison with regression-locked scoring and penalties."
 
 variants:
   B:
@@ -11,6 +11,15 @@ variants:
   D:
     recall_mode: D_dual_channel
     penalty_strength: light
+
+recall:
+  artifact_dir: data/recall
+  rrf_k: 60
+  A_retrieval_first:
+    text_shortlist_size: 10000
+  D_dual_channel:
+    text_shortlist_size: 10000
+    structured_shortlist_size: 10000
 
 jd_policy:
   hard_gates_from_integrity:

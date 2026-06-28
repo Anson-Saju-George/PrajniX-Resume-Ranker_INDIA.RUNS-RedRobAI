@@ -1,4 +1,4 @@
-"""Harness-shaped score-everyone baseline pipeline (variant B)."""
+"""Harness-shaped candidate pipeline with configurable recall selection."""
 
 from __future__ import annotations
 
@@ -12,7 +12,7 @@ from engine.data import Candidate, stream_candidates
 from engine.stages.integrity import IntegrityResult, check_candidate_integrity
 from engine.stages.output import SubmissionRow, validate_submission_rows
 from engine.stages.penalties import PenaltyResult, apply_penalties
-from engine.stages.recall import apply_recall_mode, uses_score_everyone_fallback
+from engine.stages.recall import build_recall_selection, uses_score_everyone_fallback
 from engine.stages.reasoning import build_reasoning
 from engine.stages.scoring import (
     CandidateFeatures,
@@ -43,6 +43,8 @@ class _PipelineResult:
     recall_mode: str
     recall_fallback_to_score_everyone: bool
     evaluation_scores: dict[str, float]
+    recall_selected: int
+    probe_positions: dict[str, int | None]
 
 
 __all__ = ["rank_candidates"]
@@ -87,7 +89,7 @@ def rank_candidates(
     jd: str | Path,
     config: Mapping[str, Any],
 ) -> _PipelineResult:
-    """Stream and score every surviving candidate, retaining only the best 100."""
+    """Stream the dataset and score recall-eligible survivors into a top 100."""
 
     dataset_path = Path(dataset)
     jd_path = Path(jd)
@@ -110,19 +112,30 @@ def rank_candidates(
     survivors_scored = 0
     evaluation_ids = set(config.get("_evaluation_candidate_ids", ()))
     evaluation_scores: dict[str, float] = {}
+    probe_ids = set(config.get("_probe_candidate_ids", ()))
+    full_scores: list[tuple[float, str]] = []
 
-    candidates = apply_recall_mode(stream_candidates(dataset_path), recall_mode)
-    for candidate in candidates:
+    recall_selection = build_recall_selection(dataset_path, recall_mode, config)
+    for candidate in stream_candidates(dataset_path):
         records_streamed += 1
         if candidate.candidate_id in source_ids:
             raise ValueError(f"Duplicate candidate ID: {candidate.candidate_id}")
         source_ids.add(candidate.candidate_id)
 
+        if recall_selection is not None and not recall_selection.includes(
+            candidate.candidate_id
+        ):
+            if candidate.candidate_id in evaluation_ids:
+                evaluation_scores[candidate.candidate_id] = (
+                    -2.0 + recall_selection.background_score(candidate.candidate_id)
+                )
+            continue
+
         integrity = check_candidate_integrity(candidate)
         if integrity["hard_suppress"]:
             hard_suppressed += 1
             if candidate.candidate_id in evaluation_ids:
-                evaluation_scores[candidate.candidate_id] = -1.0
+                evaluation_scores[candidate.candidate_id] = -3.0
             continue
 
         features = extract_features(candidate, reference_date)
@@ -132,6 +145,8 @@ def rank_candidates(
         if candidate.candidate_id in evaluation_ids:
             evaluation_scores[candidate.candidate_id] = final_score
         survivors_scored += 1
+        if probe_ids:
+            full_scores.append((final_score, candidate.candidate_id))
 
         item = _TopCandidate(
             candidate=candidate,
@@ -173,6 +188,16 @@ def rank_candidates(
         raise ValueError(
             f"Evaluation IDs absent from candidate stream: {sorted(missing_evaluation_ids)[:5]}"
         )
+    probe_positions: dict[str, int | None] = {candidate_id: None for candidate_id in probe_ids}
+    if probe_ids:
+        ordered_ids = [
+            candidate_id
+            for _, candidate_id in sorted(full_scores, key=lambda item: (-item[0], item[1]))
+        ]
+        position_lookup = {candidate_id: index for index, candidate_id in enumerate(ordered_ids, 1)}
+        probe_positions = {
+            candidate_id: position_lookup.get(candidate_id) for candidate_id in probe_ids
+        }
     return _PipelineResult(
         rows=tuple(guarded_rows),
         debug_top100=tuple(debug),
@@ -183,4 +208,8 @@ def rank_candidates(
         recall_mode=recall_mode,
         recall_fallback_to_score_everyone=uses_score_everyone_fallback(recall_mode),
         evaluation_scores=evaluation_scores,
+        recall_selected=(
+            len(source_ids) if recall_selection is None else len(recall_selection.candidate_ids)
+        ),
+        probe_positions=probe_positions,
     )

@@ -65,6 +65,7 @@ def _load_harness_config(path: Path) -> dict[str, Any]:
         "variants",
         "aspect_weights",
         "penalty_profiles",
+        "recall",
         "reference_date",
         "top_k",
         "score_decimals",
@@ -87,6 +88,10 @@ def _resolve_variant(
     strength = variant["penalty_strength"]
     if strength not in harness["penalty_profiles"]:
         raise ValueError(f"Unknown penalty_strength {strength!r}")
+    recall_config = dict(harness["recall"])
+    recall_config["artifact_dir"] = str(
+        (REPOSITORY_ROOT / recall_config["artifact_dir"]).resolve()
+    )
     return {
         "variant_name": variant_name,
         "recall_mode": variant["recall_mode"],
@@ -96,7 +101,9 @@ def _resolve_variant(
         "reference_date": harness["reference_date"],
         "top_k": harness["top_k"],
         "score_decimals": harness["score_decimals"],
+        "recall": recall_config,
         "_evaluation_candidate_ids": evaluation_ids,
+        "_probe_candidate_ids": {"CAND_0039754"},
     }
 
 
@@ -147,7 +154,9 @@ def _judge_metrics(scores: Mapping[str, float], labels: Mapping[str, int]) -> di
         denominator = _dcg(ideal, cutoff)
         return _dcg(relevance, cutoff) / denominator if denominator else 0.0
 
-    binary = [int(value >= 3) for value in relevance]
+    # Labels 2 (viable) and 3 (strong) are binary-relevant for MAP/P@10.
+    # NDCG above retains the full graded 0-3 relevance scale.
+    binary = [int(value >= 2) for value in relevance]
     relevant_total = sum(binary)
     hits = 0
     precision_sum = 0.0
@@ -217,6 +226,7 @@ def _run_variant(
         "records_streamed": result.records_streamed,
         "hard_suppressed": result.hard_suppressed,
         "survivors_scored": result.survivors_scored,
+        "recall_selected": result.recall_selected,
         "ranking_runtime_seconds": round(runtime, 3),
         "top100": result.debug_top100,
     }
@@ -261,6 +271,17 @@ def _run_variant(
         },
         "format_checks": csv_checks,
         "judge_metrics_status": judge_status,
+        "sanity_probes": {
+            "CAND_0039754_full_scored_rank": result.probe_positions.get("CAND_0039754"),
+            "known_good_label_gte_2_in_top100": (
+                sum(
+                    judge_labels.get(item["candidate_id"], -1) >= 2
+                    for item in result.debug_top100
+                )
+                if judge_labels is not None
+                else None
+            ),
+        },
     }
     if judge_labels is not None:
         metrics["judge_metrics"] = _judge_metrics(
@@ -285,6 +306,43 @@ def _run_variant(
     print(f"  debug={debug_path.resolve()}")
     print(f"  metrics={metrics_path.resolve()}")
     return metrics, passed
+
+
+def _write_leaderboard(
+    output_root: Path, metrics_by_variant: Mapping[str, Mapping[str, Any]]
+) -> Path:
+    """Write the frozen recall comparison using judged-only relevance metrics."""
+
+    leaderboard_path = output_root / "leaderboard.md"
+    lines = [
+        "# Phase 5A Recall Leaderboard",
+        "",
+        "All relevance metrics rank only the 80 judged candidates. No unjudged top-100 row is treated as irrelevant.",
+        "",
+        "| Variant | Recall mode | NDCG@10 | NDCG@50 | MAP | P@10 | Honeypot proxy | Runtime (s) | Validator | Known-good in top 100 |",
+        "|---|---|---:|---:|---:|---:|---:|---:|---|---:|",
+    ]
+    for variant_name in ("A", "B", "D"):
+        metrics = metrics_by_variant[variant_name]
+        judged = metrics["judge_metrics"]
+        probes = metrics["sanity_probes"]
+        lines.append(
+            "| {variant} | {mode} | {n10:.6f} | {n50:.6f} | {map_value:.6f} | "
+            "{p10:.6f} | {trap:.2%} | {runtime:.3f} | {validator} | {known_good} |".format(
+                variant=variant_name,
+                mode=metrics["recall_mode"],
+                n10=judged["NDCG@10"],
+                n50=judged["NDCG@50"],
+                map_value=judged["MAP"],
+                p10=judged["P@10"],
+                trap=metrics["top100_honeypot_proxy_rate"],
+                runtime=metrics["runtime_seconds"],
+                validator="PASS" if metrics["validator"]["pass"] else "FAIL",
+                known_good=probes["known_good_label_gte_2_in_top100"],
+            )
+        )
+    leaderboard_path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    return leaderboard_path
 
 
 def parse_args() -> argparse.Namespace:
@@ -317,8 +375,9 @@ def main() -> int:
 
     before_hash = _sha256(candidates_path)
     all_passed = True
+    metrics_by_variant: dict[str, dict[str, Any]] = {}
     for variant_name in args.variant:
-        _, passed = _run_variant(
+        metrics, passed = _run_variant(
             variant_name,
             harness,
             candidates_path,
@@ -328,7 +387,22 @@ def main() -> int:
             judge_labels,
             judge_status,
         )
+        metrics_by_variant[variant_name] = metrics
         all_passed &= passed
+    if set(metrics_by_variant) == {"A", "B", "D"} and judge_labels is not None:
+        leaderboard_path = _write_leaderboard(args.output_root, metrics_by_variant)
+        print(f"leaderboard={leaderboard_path.resolve()}")
+        for variant_name in ("A", "B", "D"):
+            probes = metrics_by_variant[variant_name]["sanity_probes"]
+            print(
+                f"{variant_name}: known label>=2 in top100="
+                f"{probes['known_good_label_gte_2_in_top100']}"
+            )
+        for variant_name in ("B", "D"):
+            rank = metrics_by_variant[variant_name]["sanity_probes"][
+                "CAND_0039754_full_scored_rank"
+            ]
+            print(f"{variant_name}: CAND_0039754 full scored rank={rank}")
     after_hash = _sha256(candidates_path)
     unchanged = before_hash == after_hash
     print(f"{'PASS' if unchanged else 'FAIL'}: candidates.jsonl SHA-256 unchanged")

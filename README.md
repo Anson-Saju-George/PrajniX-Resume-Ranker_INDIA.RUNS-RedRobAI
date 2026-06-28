@@ -1,139 +1,122 @@
-# Robust JD-Aware Candidate Ranking
+# TalentGate AI — JD-aware candidate ranking (Team PrajniX)
 
-## Overview
+TalentGate AI is an evaluation framework for robust JD-aware ranking. It deterministically ranks 100,000 structured candidate profiles against a Senior AI Engineer job description, protects the shortlist from integrity traps, and produces a validated top 100 with evidence-grounded explanations under the challenge's CPU-only, no-network, sub-five-minute constraints.
 
-This project is **an evaluation framework for robust, JD-aware candidate ranking**. It ranks 100,000 synthetic candidate profiles against one Senior AI Engineer job description and emits a deterministic top 100 with evidence-grounded reasons.
+## Reproduce (Stage 3)
 
-It is deliberately not presented as an ATS. The repository focuses on the challenge's narrower retrieval, integrity, ranking, evaluation, and reproducibility requirements.
+Place `candidates.jsonl` and its supplied `candidate_schema.json` at the repository root. The committed precomputed artifacts must exist under `data/recall/`. Then run exactly:
 
-The locked configuration is:
+```bash
+python rank.py --candidates ./candidates.jsonl --out ./PrajniX.csv
+```
 
-- Recall: `D_dual_channel`
-- Experience profile: `overband_mild`
-- Penalties: `heavy` availability penalties
-- Default variant: `D_overband_mild_avail_heavy`
+`rank.py` loads the locked `D_overband_mild_avail_heavy` configuration. It does not compute embeddings. If the local artifacts are absent, build them offline before the timed ranking run:
 
-## Architecture
+```bash
+python scripts/precompute.py --candidates ./candidates.jsonl --output-dir ./data/recall
+```
 
-The project separates the deterministic ranking engine from potential product consumers. `engine/` contains schema-validated data access, features, ranking stages, and output guards. Product interfaces such as a UI or HR assistant must consume engine output and must not be imported by the engine. Experiment orchestration remains in `experiments/`.
+The precompute step is outside the judged ranking runtime and may take longer than five minutes. The ranking command prints its runtime, SHA-256, and—when the committed reference is present—a byte-identity comparison against `outputs/PrajniX.csv`.
 
-The engine exposes one public ranking interface:
+### Docker sandbox
+
+The Docker image uses a committed 100-candidate fixture, builds a matching local retrieval artifact during image construction, and runs entirely on CPU without the full 487 MB dataset:
+
+```bash
+docker build -t talentgate . && docker run --rm talentgate
+```
+
+The container runs `rank.py` end-to-end and emits `/app/PrajniX_sandbox.csv`. Its console output includes runtime and SHA-256.
+
+## Architecture and methodology
+
+### Engine/product split
+
+`engine/` is deterministic competition code and imports nothing from product, UI, RAG, or experiment layers. Product consumers use the engine result through one interface:
 
 ```python
 submission = rank_candidates(dataset, jd, config)
 ```
 
-The logical eight-stage pipeline is:
+Configuration and experiment orchestration live outside the engine. The locked configuration is `D_dual_channel` recall, `overband_mild` experience fit, and heavy behavioral-availability penalties.
 
-1. **JD understanding** — freeze must-haves, preferences, and deal-breakers from the supplied JD.
-2. **Integrity shield** — identify severe contradictions and collect evidence-bearing soft flags.
-3. **Recall** — union structured recall over all candidates with field-weighted lexical/dense retrieval.
-4. **Aspect scoring** — score corroborated skills, career, production, experience, availability, and integrity.
-5. **Penalties** — apply deterministic anomaly and availability down-weights.
-6. **Reranking** — order surviving recall candidates with deterministic candidate-ID tie-breaking.
-7. **Reasoning** — generate one or two factual sentences from stored candidate fields.
-8. **Output** — write and validate the exact 100-row submission format.
+### Eight-stage pipeline
 
-`engine/pipeline.py` wires these stages from `configs/scoring.yaml`. The experiment harness changes recall, experience, or penalty profiles through configuration rather than duplicating ranking code.
+1. **JD understanding** freezes must-haves, preferences, and disqualifying contradictions.
+2. **Integrity/honeypot shield** suppresses severe contradictions and records evidence-bearing soft flags.
+3. **Dual-channel recall** unions structured fit over all candidates with field-weighted BM25/dense retrieval.
+4. **Aspect scoring** evaluates corroborated skills, career, production, experience, availability, and integrity.
+5. **Penalties** apply deterministic anomaly and behavioral-availability down-weights.
+6. **Reranking** orders survivors with deterministic candidate-ID tie-breaking.
+7. **Reasoning** produces factual template-based explanations from observed fields.
+8. **Output** writes the exact 100-row CSV and runs format guards.
 
-## Methodology
+### Integrity and honeypot defense
 
-### JD-derived gates and compensatory signals
+The shield separates hard gates from compensatory ranking evidence. Dataset-wide streaming validation reproduced these contradiction counts:
 
-The JD distinguishes disqualifying contradictions from preferences that can compensate for one another. Severe cases—such as unsupported keyword stuffing, consulting-only trajectories, pure research without production evidence, and no recent production coding—are suppressed before ranking. Skills, company context, production history, evaluation experience, and availability are otherwise compensatory signals rather than independent keyword votes.
-
-The ideal experience band is 6–8 years. The curve is asymmetric: under-qualification is penalized firmly, while over-qualification is penalized meaningfully without becoming an automatic rejection. The final mild over-band profile correctly moves `CAND_0039754`, the observed 16.2-year canary, from rank 5 to rank 10 while retaining all seven judged, genuinely available relevance-3 candidates in the top 10.
-
-### Dual-channel recall
-
-The locked recall mode is `D_dual_channel`:
-
-- a structured-fit channel evaluates all 100,000 profiles; and
-- a text channel combines field-weighted BM25 with precomputed dense vectors using reciprocal-rank fusion.
-
-The union is passed through the same integrity and aspect-scoring stages. This design protects strong candidates whose evidence is structured but whose prose lacks fashionable keywords.
-
-Raw text similarity is not sufficient here. The dataset contains only **44 unique career descriptions across 300,171 roles**, so repeated templates can dominate lexical or dense similarity. The stronger signal is coherence across title, skill duration, endorsements, assessments when present, career evidence, production language, and company context. Missing assessment/certification collections and `-1` sentinels are treated as missing—not as low scores.
-
-### Integrity and honeypot shield
-
-The integrity shield runs before candidates can enter the final ranking. Every flag carries the field values that triggered it. A full streaming scan reproduced the dataset's integrity evidence:
-
-| Check | Observed count |
+| Integrity check | Validated count |
 |---|---:|
-| Expected salary minimum greater than maximum | 18,865 candidates |
-| `last_active_date` before `signup_date` | 7,496 candidates |
-| Expert skill with zero months | 84 skill rows |
-| Certification dated after 2026 | 23 entries |
+| Expected salary minimum greater than maximum | 18,865 |
+| `last_active_date` before `signup_date` | 7,496 |
+| Expert skill with zero months | 84 |
+| Certification dated after 2026 | 23 |
 
-Salary/date anomalies are soft evidence; severe contradictions are hard suppressions. The final top-100 honeypot-proxy rate was 0%, below the 10% disqualification threshold.
+Severe title/career contradictions, unsupported keyword stuffing, consulting-only trajectories, pure research without production, and no recent production coding are suppressed before final ranking. Softer anomalies remain evidence-bearing down-weights. The final top-100 honeypot-proxy rate is 0%.
 
-### Evidence-grounded reasoning
+### Why dual-channel recall
 
-Reasons are generated by deterministic templates from real profile, career, production, and behavioral fields. No hosted model or generative AI runs during ranking. The system does not invent skills, employers, project outcomes, or availability claims.
+The data contains only **44 unique career descriptions across approximately 300,000 roles**. Raw text is therefore heavily templated and cannot safely determine relevance by itself. The real signal is coherence across title, skill duration, endorsements, assessments when present, career evidence, production language, and company context.
+
+The structured channel scores all 100,000 candidates so plain-language strong candidates are not lost. The text channel uses field-weighted BM25 and precomputed dense vectors fused with reciprocal-rank fusion. Their union proceeds through the same integrity and aspect-scoring stages.
+
+### Gates, compensation, experience, and availability
+
+Hard contradictions gate candidates; legitimate strengths compensate across skills, production, career, and availability. The ideal experience band is 6–8 years, with an asymmetric curve that applies a light adjustment from 8–10 years and material over-band penalties above 10 years. The observed 16.2-year canary is correctly demoted from rank 5 to rank 10, where its explanation explicitly records the over-band adjustment.
+
+Behavioral availability is a separate modifier. Not-open-to-work, long-notice, low-response, and stale candidates are down-weighted without treating missing `-1` sentinels or empty optional collections as negative evidence.
+
+Reasoning is generated by deterministic templates from real candidate fields. It invents no skills, employers, project outcomes, or availability claims.
 
 ## Evaluation
 
-The released 100,000-candidate dataset is **UNLABELED**. Organizer relevance tiers and honeypot identities are hidden, so the sample submission cannot provide supervision.
+The released candidate pool is **UNLABELED**. A blind, shuffled, stratified 80-row validation set across 10 slices was hand-judged on a 0–3 relevance scale. Variants ranked only those 80 judged candidates for NDCG@10, NDCG@50, MAP, and P@10; unjudged candidates were never treated as negatives.
 
-For directional evaluation, we created a blind, shuffled, stratified set of 80 candidates across 10 deliberately mixed slices. Every row received a human relevance label from 0–3 without exposing model scores. Variants were evaluated by ranking only those 80 judged candidates and computing NDCG@10, NDCG@50, MAP, and P@10. Unjudged top-100 candidates were never treated as negatives.
+NDCG@10 was near-saturated on this small directional set, so final selection used top-10 composition probes: a 16.2-year over-band canary, three relevant but unavailable candidates, and retention of seven genuine relevance-3 candidates. The mild and strong over-band variants tied on aggregate judged metrics; mild was selected because it satisfied every probe without displacing genuine top candidates.
 
-The final judged-only result was:
+The final full run is deterministic, takes approximately 30 seconds on the development machine, and has a 0% honeypot-proxy rate in the top 100.
 
-| Variant | NDCG@10 | NDCG@50 | MAP | P@10 |
-|---|---:|---:|---:|---:|
-| `D_overband_mild_avail_heavy` | 0.978637 | 0.983306 | 0.831414 | 0.900000 |
+## Why `sample_submission.csv` is not labels
 
-NDCG@10 is near-saturated on an 80-row judge set, so tiny aggregate differences are not precise evidence. Final selection prioritized top-10 composition through targeted probes: a 16.2-year over-band canary, three relevant but not-open-to-work candidates, and retention of seven genuine relevance-3 candidates. Mild and strong over-band profiles tied on all reported aggregate metrics. Mild was selected as the no-worse-anywhere option: it met every probe threshold while preserving the genuine top candidates at equal or better positions.
+The organizer supplies `sample_submission.csv` only as a format reference. It ranks an **HR Manager at #1**, which is the title/keyword incoherence trap the challenge explicitly warns about. Its order and scores are not training labels.
 
-Full experiment results are written to `outputs/variants/leaderboard.md` during local runs.
+## Reproducibility constraints
 
-## Why `sample_submission.csv` Is Not Labels
+- CPU-only ranking; the RTX 5080 GPU is not used.
+- No network or external API calls during ranking.
+- Ranking runtime is approximately 30 seconds and below five minutes.
+- Streaming input and memory-mapped artifacts keep ranking below 16 GB RAM.
+- Candidate and JD vectors are precomputed offline under `data/` and only loaded at rank time.
+- Equal scores tie-break by `candidate_id` ascending.
+- Dependencies are pinned exactly in `requirements.txt`.
 
-The organizer explicitly provides `sample_submission.csv` as a format example, not a quality ranking. Its rank-1 candidate is an **HR Manager**, the same title/keyword incoherence trap the challenge warns about. Treating its scores or order as ground truth would train the system toward a known failure mode.
+## Compute environment
 
-## Reproducibility
+- Development machine: HP OMEN MAX
+- CPU: Intel Ultra 7 255HX (20 cores)
+- RAM: 64 GB
+- Development OS/runtime: Windows, Python 3.14.4
+- Reproducible container: `python:3.11-slim`
+- GPU present: RTX 5080; not used during ranking
 
-Requirements:
+## AI-tool declaration
 
-- Python 3.14-compatible environment
-- dependencies from `requirements.txt`
-- the supplied `candidates.jsonl`, `candidate_schema.json`, and `job_description.docx`
-- precomputed retrieval artifacts under `data/recall/`
+Claude, ChatGPT, and OpenAI Codex CLI were used for design discussion, code generation, debugging, documentation, and review. All ranking logic is deterministic and human-reviewed. No AI model, hosted LLM, or external API runs in the judged ranking pipeline.
 
-Install dependencies once:
+## Limitations and future work
 
-```powershell
-python -m pip install -r requirements.txt
-```
-
-Run the locked configuration with one command from the repository root:
-
-```powershell
-python experiments/run_variants.py
-```
-
-The command selects `default_variant` from `configs/scoring.yaml` and writes:
-
-```text
-outputs/variants/D_overband_mild_avail_heavy/submission.csv
-outputs/variants/D_overband_mild_avail_heavy/debug_top100.json
-outputs/variants/D_overband_mild_avail_heavy/metrics.json
-```
-
-The measured ranking runtime was approximately **29 seconds**. Ranking is CPU-only, uses no network or external API, and stays below the five-minute and 16 GB RAM limits. Candidate and JD embeddings are **precomputed offline into `data/` and loaded at rank time; they are never computed during ranking**. If artifacts must be rebuilt outside the judged run, use `python experiments/precompute_recall_artifacts.py`.
-
-Before upload, rename the validated final CSV to the registered participant ID and run the provided validator on that renamed file.
-
-## Limitations and Future Work
-
-- The 80-row judge set is directional, not a precise estimate of hidden-test performance. More independently judged candidates and inter-annotator checks would improve confidence.
-- This is a single-JD evaluation. Generalization across roles, seniority bands, industries, and locations remains unmeasured.
-- Candidate-level external enrichment is not reproducible: profiles contain anonymized/reused names and no GitHub, LinkedIn, portfolio, website, or Scholar URLs.
-- Career prose is heavily templated, limiting the independent information available to BM25 and dense retrieval.
-- Hidden organizer honeypots are unavailable; the integrity shield is an evidence-based proxy, not verified ground truth.
-- A future multi-JD study could validate calibration and experience curves without changing the deterministic engine/product boundary.
-
-## AI Tool Usage
-
-See [AI_TOOLS.md](AI_TOOLS.md) for the complete declaration. Claude, ChatGPT, and Codex assisted with design discussion, code generation, and review. All ranking logic is deterministic and human-reviewed; no AI model runs in the judged ranking pipeline.
+- The 80-row judge set is directional rather than a precise estimate of hidden-test performance.
+- This evaluation covers one JD; cross-role calibration remains unmeasured.
+- Candidate-level external enrichment is not reproducible because the data provides no GitHub, LinkedIn, portfolio, website, or Scholar URLs.
+- Repeated synthetic career prose limits the independent value of lexical and dense retrieval.
+- Hidden organizer honeypots are unavailable; the integrity rate is an evidence-based proxy, not released ground truth.

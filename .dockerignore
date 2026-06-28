@@ -1,0 +1,24 @@
+.git
+.agents
+.codex
+.venv
+venv
+__pycache__
+**/__pycache__
+*.pyc
+*.pyo
+*.log
+.env
+.DS_Store
+__MACOSX
+**/__MACOSX
+
+# Full challenge inputs and generated artifacts never enter the sandbox image.
+candidates.jsonl
+**/candidates.jsonl
+[PUB] India_runs_data_and_ai_challenge/
+data/
+outputs/
+
+# The committed, bounded sandbox fixture remains available.
+!sandbox/sample_candidates.jsonl

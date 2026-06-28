@@ -168,8 +168,8 @@ def build_artifacts(
     count, average_lengths, document_frequency = _corpus_statistics(
         candidates_path, query_terms
     )
-    if count != 100_000:
-        raise ValueError(f"Expected 100,000 candidates; found {count}")
+    if count == 0:
+        raise ValueError("Candidate input contains no records")
 
     output_dir.mkdir(parents=True, exist_ok=True)
     candidate_ids = open_memmap(

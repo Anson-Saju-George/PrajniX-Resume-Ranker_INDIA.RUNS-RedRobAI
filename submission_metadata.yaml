@@ -20,13 +20,13 @@ team_members:
     email: hareshp.s1066@gmail.com
 
 github_repo: https://github.com/Anson-Saju-George/PrajniX-Resume-Ranker_INDIA.RUNS-RedRobAI
-sandbox_link: "TBD — Docker/Colab recipe being finalized (see README, added next step)"
-reproduce_command: python experiments/run_variants.py
+sandbox_link: "Docker recipe in README (docker build -t talentgate . && docker run --rm talentgate)"
+reproduce_command: "python rank.py --candidates ./candidates.jsonl --out ./PrajniX.csv"
 
-compute_environment: "Windows, 64 GB RAM, Python 3.14.4 (CPU-only during ranking; no GPU used)"
+compute_environment: "HP OMEN MAX, Intel Ultra 7 255HX (20 cores), 64 GB RAM, Windows, Python 3.14.4 dev; reproducible container python:3.11-slim; CPU-only during ranking, GPU unused"
 compute:
-  platform: Windows
-  cpu_cores: "NOT PROVIDED — team confirmation required"
+  platform: "HP OMEN MAX"
+  cpu_cores: 20
   ram_gb: 64
   python_version: "3.14.4"
   os: Windows
@@ -67,12 +67,7 @@ methodology_summary: >
 
 declarations:
   read_submission_spec: true
-  code_is_original_work: "NOT PROVIDED — team confirmation required"
-  no_collusion: "NOT PROVIDED — team confirmation required"
+  code_is_original_work: true
+  no_collusion: true
   honeypot_check_done: true
   reproduction_tested: true
-
-fields_requiring_team_confirmation:
-  - compute.cpu_cores
-  - declarations.code_is_original_work
-  - declarations.no_collusion

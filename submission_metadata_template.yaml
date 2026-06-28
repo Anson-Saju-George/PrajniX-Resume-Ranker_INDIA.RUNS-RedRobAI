@@ -1,0 +1,69 @@
+# Redrob Hackathon submission metadata.
+# Replace every <FILL: ...> value before portal submission.
+
+participant_id: "<FILL: registered participant ID>"
+team_name: "<FILL: registered participant ID>"
+
+primary_contact:
+  name: "Anson Saju George"
+  email: "ansonsaju@karunya.edu.in"
+  phone: "<FILL: primary contact phone>"
+
+team_members:
+  - name: "Anson Saju George"
+    email: "ansonsaju@karunya.edu.in"
+    role: "Primary contact"
+
+github_repo: "https://github.com/Anson-Saju-George/Resume-Ranker_INDIA.RUNS-RedRobAI"
+sandbox_link: "<FILL: hosted <=100-candidate sandbox URL>"
+reproduce_command: "python experiments/run_variants.py"
+
+compute:
+  platform: "Local Windows CPU environment"
+  cpu_cores: 20
+  ram_gb: 16  # Ranking was constrained to the organizer's 16 GB limit.
+  python_version: "3.14.4"
+  os: "Windows 10 Pro (NT 10.0.26200)"
+  uses_gpu_for_inference: false
+  has_network_during_ranking: false
+  pre_computation_required: true
+  pre_computation_time_minutes: 1.33
+
+ai_tools_used:
+  - "Claude"
+  - "ChatGPT"
+  - "Codex"
+
+ai_usage_summary: |
+  Claude, ChatGPT, and Codex were used for design discussion, code generation,
+  debugging assistance, documentation, and review. All ranking logic is
+  deterministic and human-reviewed. No AI model or external API runs in the
+  judged ranking pipeline; reasoning is generated from fixed evidence templates.
+
+methodology_summary: |
+  Deterministic, JD-aware ranking over 100,000 schema-validated candidate
+  profiles. An integrity shield suppresses severe contradictions before a
+  dual-channel recall stage unions structured fit over the full pool with
+  field-weighted BM25 and precomputed dense-vector retrieval. The union is
+  scored on corroborated skills, career and production evidence, asymmetric
+  experience-band fit, behavioral availability, and integrity confidence.
+  Missing sentinels remain neutral. Heavy availability penalties down-weight
+  not-open, stale, low-response, and long-notice candidates. Output reasoning
+  is template-generated from observed fields. The unlabeled dataset was tuned
+  directionally using a blind 80-row, 10-slice human judge set and judged-only
+  NDCG@10/NDCG@50/MAP/P@10, with targeted top-10 probes used as the final
+  tiebreaker. Ranking is CPU-only, network-free, and takes approximately 29
+  seconds using precomputed local retrieval artifacts.
+
+locked_configuration:
+  recall_mode: "D_dual_channel"
+  scoring_variant: "D_overband_mild_avail_heavy"
+  experience_profile: "overband_mild"
+  penalty_profile: "heavy"
+
+declarations:
+  read_submission_spec: true
+  code_is_original_work: true
+  no_collusion: null  # <FILL: confirm true/false before submission>
+  honeypot_check_done: true
+  reproduction_tested: true

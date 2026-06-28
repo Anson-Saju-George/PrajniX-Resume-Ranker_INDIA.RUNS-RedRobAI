@@ -1,0 +1,51 @@
+variant: B
+description: "Score every non-suppressed candidate with corroborated JD-derived aspects."
+
+jd_policy:
+  hard_gates_from_integrity:
+    - expert_skill_zero_months
+    - future_dated_certification
+    - multiple_severe_contradictions
+    - keyword_stuffer
+    - consulting_only_trajectory
+    - pure_research_without_production
+    - no_recent_production_code
+  must_haves:
+    - production_embeddings_retrieval
+    - vector_or_hybrid_search
+    - python
+    - ranking_evaluation_frameworks
+  nice_to_haves:
+    - llm_fine_tuning
+    - learning_to_rank
+    - hrtech_or_marketplace
+    - distributed_systems_or_inference
+    - open_source_ai_ml
+  soft_negatives:
+    cv_speech_robotics_without_nlp_ir: "low retrieval/career evidence; no title-only penalty"
+    title_chasing: "not inferred without defensible title-progression evidence"
+    closed_source_only_without_external_validation: "not inferred from missing profile URLs"
+    behavioral_unavailability: "behavioral availability aspect plus Phase 1 penalties"
+
+# Frozen from docs/PRD.md section 4b. Values sum to 1.0.
+weights:
+  ai_retrieval_fit: 0.30
+  python_product_engineering_fit: 0.15
+  production_career_relevance: 0.25
+  experience_band_fit: 0.10
+  behavioral_availability: 0.12
+  integrity_confidence: 0.08
+
+# Phase 1 soft flags are multiplicative confidence penalties, never removals.
+penalties:
+  salary_range_reversed: 0.98
+  last_active_before_signup: 0.95
+  skill_duration_impossible: 0.90
+  long_notice_period: 0.95
+  long_notice_period_severe: 0.88
+  low_recruiter_response_rate: 0.90
+  low_profile_completeness: 0.92
+
+reference_date: "2026-06-01"
+top_k: 100
+score_decimals: 8

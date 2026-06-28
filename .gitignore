@@ -5,6 +5,7 @@ candidates.jsonl
 outputs/
 cache/
 artifacts/
+data/
 *.npy
 *.npz
 *.pkl

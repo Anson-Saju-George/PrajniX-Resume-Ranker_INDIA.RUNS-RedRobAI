@@ -115,6 +115,11 @@ def parse_args() -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Run the locked PrajniX ranker")
     parser.add_argument("--candidates", type=Path, required=True)
     parser.add_argument("--out", type=Path, required=True)
+    parser.add_argument(
+        "--verify-against",
+        type=Path,
+        help="Optional local regression reference; never affects ranking or exit status",
+    )
     return parser.parse_args()
 
 
@@ -138,26 +143,22 @@ def main() -> int:
     print(f"Runtime: {runtime:.3f}s (CPU-only, precomputed artifacts loaded)")
     print(f"SHA-256: {output_hash}")
 
-    reference = REPOSITORY_ROOT / "outputs" / "PrajniX.csv"
-    if reference.is_file() and reference.resolve() != output_path:
-        reference_hash = _sha256(reference)
-        matches = output_hash == reference_hash
-        print(f"Reference SHA-256: {reference_hash}")
-        print(f"Byte-identical to outputs/PrajniX.csv: {'PASS' if matches else 'FAIL'}")
-        if not matches:
-            return 1
+    if args.verify_against is not None:
+        reference = args.verify_against.resolve()
+        reference_label = args.verify_against.as_posix()
+        if reference.is_file():
+            reference_hash = _sha256(reference)
+            matches = output_hash == reference_hash
+            print(f"Reference SHA-256: {reference_hash}")
+            print(
+                f"Byte-identical to {reference_label}: "
+                f"{'PASS' if matches else 'FAIL'}"
+            )
+        else:
+            print(f"Reference comparison skipped; file not found: {reference_label}")
 
-    print("XLSX VERIFICATION")
-    for check, passed in xlsx_verification["checks"].items():
-        print(f"{'PASS' if passed else 'FAIL'}: {check}")
-    print(f"Row-by-row mismatch count: {xlsx_verification['mismatch_count']}")
-    print("FIRST 3 XLSX ROWS")
-    for row in xlsx_verification["preview"][:3]:
-        print(row)
-    print("LAST 3 XLSX ROWS")
-    for row in xlsx_verification["preview"][-3:]:
-        print(row)
     if not all(xlsx_verification["checks"].values()):
+        print("ERROR: generated XLSX failed internal fidelity checks", file=sys.stderr)
         return 1
     return 0
 

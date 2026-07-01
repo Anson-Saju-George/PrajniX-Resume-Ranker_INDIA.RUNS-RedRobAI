@@ -1,5 +1,11 @@
 # Raw challenge data must never enter version control.
 candidates.jsonl
+India_runs_data_and_ai_challenge/
+
+# Internal analysis/design documents and the blank metadata template.
+submission_metadata_template.yaml
+docs/PRD.md
+Dataset_Explanation.md
 
 # Generated reports and runtime artifacts.
 outputs/

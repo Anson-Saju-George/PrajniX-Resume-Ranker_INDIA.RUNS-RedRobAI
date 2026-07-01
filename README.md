@@ -13,6 +13,15 @@ python rank.py --candidates ./candidates.jsonl --out ./PrajniX.csv
 
 `scripts/precompute.py` regenerates `data/recall/`. Precomputation is outside the judged ranking runtime and may exceed five minutes, as permitted by the challenge. `rank.py` then loads those artifacts and the locked `D_overband_mild_avail_heavy` configuration; it never computes embeddings. The rank step is CPU-only, uses no network or API, and completes in under five minutes. It writes both `PrajniX.csv` and `PrajniX.xlsx` from the same final rows, then prints CSV SHA-256 and XLSX fidelity checks. When the approved reference is present, it also prints a byte-identity comparison against `outputs/PrajniX.csv`.
 
+## Performance & Compute
+
+| Step | Clean-room runtime | Five-minute budget treatment |
+|---|---:|---|
+| Offline precompute (one-time) | ~92 seconds | Separate offline step; allowed to exceed the window and **does not count** against the judged ranking budget |
+| Ranking (judged step) | ~33 seconds | **The only step counted** against the five-minute budget; well under the limit |
+
+The judged ranking step is CPU-only, uses no network or GPU, and stays below 16 GB RAM. A byte-identical clean-room reproduction was verified from a fresh tracked-files-only checkout plus the supplied candidate inputs: the regenerated `PrajniX.csv` matched the approved SHA-256 `5E9E8DAC4ABC114D04D3DA08A02F2DF938968BDE67046B55275CD3CC486A7CB3`.
+
 ## Architecture and methodology
 
 ### Engine/product split
@@ -71,7 +80,7 @@ The released candidate pool is **UNLABELED**. A blind, shuffled, stratified 80-r
 
 NDCG@10 was near-saturated on this small directional set, so final selection used top-10 composition probes: a 16.2-year over-band canary, three relevant but unavailable candidates, and retention of seven genuine relevance-3 candidates. The mild and strong over-band variants tied on aggregate judged metrics; mild was selected because it satisfied every probe without displacing genuine top candidates.
 
-The final full run is deterministic, takes approximately 30 seconds on the development machine, and has a 0% honeypot-proxy rate in the top 100.
+The final full run is deterministic, takes approximately 33 seconds on the development machine, and has a 0% honeypot-proxy rate in the top 100.
 
 ## Why `sample_submission.csv` is not labels
 
@@ -81,7 +90,7 @@ The organizer supplies `sample_submission.csv` only as a format reference. It ra
 
 - CPU-only ranking; the RTX 5080 GPU is not used.
 - No network or external API calls during ranking.
-- Ranking runtime is approximately 30 seconds and below five minutes.
+- Ranking runtime is approximately 33 seconds and below five minutes.
 - Streaming input and memory-mapped artifacts keep ranking below 16 GB RAM.
 - Candidate and JD vectors are regenerated offline by `scripts/precompute.py` under `data/recall/` and only loaded at rank time. The directory is gitignored and is not supplied by the repository.
 - Equal scores tie-break by `candidate_id` ascending.

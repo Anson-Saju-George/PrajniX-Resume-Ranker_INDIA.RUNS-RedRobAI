@@ -12,7 +12,11 @@ from typing import Any
 import yaml
 
 from engine.pipeline import rank_candidates
-from engine.stages.output import write_submission
+from engine.stages.output import (
+    verify_xlsx_against_csv,
+    write_submission,
+    write_xlsx_from_csv,
+)
 
 
 REPOSITORY_ROOT = Path(__file__).resolve().parent
@@ -124,10 +128,13 @@ def main() -> int:
     started = time.perf_counter()
     result = rank_candidates(candidates, jd, config)
     write_submission(args.out, result.rows)
+    xlsx_path = write_xlsx_from_csv(args.out)
+    xlsx_verification = verify_xlsx_against_csv(args.out, xlsx_path)
     runtime = time.perf_counter() - started
     output_path = args.out.resolve()
     output_hash = _sha256(output_path)
     print(f"Wrote {output_path}")
+    print(f"Wrote {xlsx_path.resolve()}")
     print(f"Runtime: {runtime:.3f}s (CPU-only, precomputed artifacts loaded)")
     print(f"SHA-256: {output_hash}")
 
@@ -139,6 +146,19 @@ def main() -> int:
         print(f"Byte-identical to outputs/PrajniX.csv: {'PASS' if matches else 'FAIL'}")
         if not matches:
             return 1
+
+    print("XLSX VERIFICATION")
+    for check, passed in xlsx_verification["checks"].items():
+        print(f"{'PASS' if passed else 'FAIL'}: {check}")
+    print(f"Row-by-row mismatch count: {xlsx_verification['mismatch_count']}")
+    print("FIRST 3 XLSX ROWS")
+    for row in xlsx_verification["preview"][:3]:
+        print(row)
+    print("LAST 3 XLSX ROWS")
+    for row in xlsx_verification["preview"][-3:]:
+        print(row)
+    if not all(xlsx_verification["checks"].values()):
+        return 1
     return 0
 
 

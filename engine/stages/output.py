@@ -6,8 +6,12 @@ import csv
 import math
 import re
 from dataclasses import dataclass
+from decimal import Decimal
 from pathlib import Path
-from typing import Iterable
+from typing import Any, Iterable
+
+from openpyxl import Workbook, load_workbook
+from openpyxl.styles import Alignment, Font
 
 
 HEADER = ("candidate_id", "rank", "score", "reasoning")
@@ -66,3 +70,120 @@ def write_submission(path: str | Path, rows: Iterable[SubmissionRow]) -> None:
         writer.writerow(HEADER)
         for row in rows:
             writer.writerow((row.candidate_id, row.rank, f"{row.score:.8f}", row.reasoning))
+
+
+def _read_submission_csv(path: Path) -> list[list[str]]:
+    """Read the finished CSV without coercing identifiers or numeric text."""
+
+    with path.open("r", encoding="utf-8", newline="") as source:
+        rows = list(csv.reader(source))
+    if not rows or tuple(rows[0]) != HEADER:
+        raise ValueError(f"CSV header must be exactly {HEADER}")
+    if len(rows) != 101:
+        raise ValueError(f"XLSX conversion requires 100 data rows; found {len(rows) - 1}")
+    return rows
+
+
+def write_xlsx_from_csv(csv_path: str | Path) -> Path:
+    """Create a typed, single-sheet XLSX from the just-written submission CSV."""
+
+    source = Path(csv_path)
+    rows = _read_submission_csv(source)
+    destination = source.with_suffix(".xlsx")
+
+    workbook = Workbook()
+    worksheet = workbook.active
+    worksheet.title = "Submission"
+    worksheet.freeze_panes = "A2"
+    worksheet.append(list(HEADER))
+    for cell in worksheet[1]:
+        cell.font = Font(bold=True)
+
+    for candidate_id, rank, score, reasoning in rows[1:]:
+        worksheet.append(
+            (candidate_id, int(rank), Decimal(score), reasoning)
+        )
+        row_number = worksheet.max_row
+        worksheet.cell(row_number, 1).number_format = "@"
+        worksheet.cell(row_number, 3).number_format = "0.00000000"
+        worksheet.cell(row_number, 4).alignment = Alignment(wrap_text=True)
+
+    worksheet.column_dimensions["A"].width = 18
+    worksheet.column_dimensions["B"].width = 12
+    worksheet.column_dimensions["C"].width = 14
+    worksheet.column_dimensions["D"].width = 100
+    worksheet.auto_filter.ref = "A1:D101"
+    workbook.save(destination)
+    return destination
+
+
+def verify_xlsx_against_csv(
+    csv_path: str | Path, xlsx_path: str | Path
+) -> dict[str, Any]:
+    """Reload the XLSX and prove value/order/type fidelity against its source CSV."""
+
+    csv_rows = _read_submission_csv(Path(csv_path))
+    workbook = load_workbook(xlsx_path, read_only=True, data_only=True)
+    if workbook.sheetnames != ["Submission"]:
+        raise ValueError("XLSX must contain one sheet named Submission")
+    worksheet = workbook["Submission"]
+    xlsx_rows = list(worksheet.iter_rows(min_row=1, max_col=4))
+
+    header = [cell.value for cell in xlsx_rows[0]]
+    mismatches: list[int] = []
+    type_failures: list[str] = []
+    preview: list[dict[str, Any]] = []
+    loaded_scores: list[Decimal] = []
+    loaded_ranks: list[int] = []
+
+    for index, (csv_row, cells) in enumerate(zip(csv_rows[1:], xlsx_rows[1:]), 1):
+        candidate_id, rank, score, reasoning = csv_row
+        loaded = [cell.value for cell in cells]
+        score_matches = Decimal(str(loaded[2])) == Decimal(score)
+        values_match = (
+            loaded[0] == candidate_id
+            and loaded[1] == int(rank)
+            and score_matches
+            and loaded[3] == reasoning
+        )
+        if not values_match:
+            mismatches.append(index)
+        if cells[0].data_type != "s":
+            type_failures.append(f"A{index + 1}")
+        if cells[1].data_type != "n" or not isinstance(loaded[1], int):
+            type_failures.append(f"B{index + 1}")
+        if cells[2].data_type != "n":
+            type_failures.append(f"C{index + 1}")
+        if cells[3].data_type != "s":
+            type_failures.append(f"D{index + 1}")
+        loaded_ranks.append(int(loaded[1]))
+        loaded_scores.append(Decimal(str(loaded[2])))
+        preview.append(
+            {
+                "candidate_id": loaded[0],
+                "rank": loaded[1],
+                "score": score,
+                "reasoning": loaded[3],
+                "types": ("TEXT", "INTEGER", "NUMERIC", "TEXT"),
+            }
+        )
+
+    checks = {
+        "100_rows_plus_header": len(xlsx_rows) == 101,
+        "exact_header": header == list(HEADER),
+        "ranks_1_to_100_once": loaded_ranks == list(range(1, 101)),
+        "scores_non_increasing": all(
+            loaded_scores[index - 1] >= loaded_scores[index]
+            for index in range(1, len(loaded_scores))
+        ),
+        "row_by_row_value_equality": not mismatches,
+        "cell_types_preserved": not type_failures,
+    }
+    workbook.close()
+    return {
+        "checks": checks,
+        "mismatch_count": len(mismatches),
+        "mismatch_rows": mismatches,
+        "type_failures": type_failures,
+        "preview": preview,
+    }

@@ -11,7 +11,7 @@ python scripts/precompute.py --candidates ./candidates.jsonl --jd ./job_descript
 python rank.py --candidates ./candidates.jsonl --out ./PrajniX.csv
 ```
 
-`scripts/precompute.py` regenerates `data/recall/`. Precomputation is outside the judged ranking runtime and may exceed five minutes, as permitted by the challenge. `rank.py` then loads those artifacts and the locked `D_overband_mild_avail_heavy` configuration; it never computes embeddings. The rank step is CPU-only, uses no network or API, and completes in under five minutes. It writes `PrajniX.csv` and prints its runtime, SHA-256, and—when the approved reference is present—a byte-identity comparison against `outputs/PrajniX.csv`.
+`scripts/precompute.py` regenerates `data/recall/`. Precomputation is outside the judged ranking runtime and may exceed five minutes, as permitted by the challenge. `rank.py` then loads those artifacts and the locked `D_overband_mild_avail_heavy` configuration; it never computes embeddings. The rank step is CPU-only, uses no network or API, and completes in under five minutes. It writes both `PrajniX.csv` and `PrajniX.xlsx` from the same final rows, then prints CSV SHA-256 and XLSX fidelity checks. When the approved reference is present, it also prints a byte-identity comparison against `outputs/PrajniX.csv`.
 
 ## Architecture and methodology
 
@@ -96,7 +96,7 @@ docker build -t talentgate .
 docker run --rm talentgate
 ```
 
-The container runs `rank.py` and emits `/app/PrajniX_sandbox.csv`. Its console output includes runtime and SHA-256.
+The container runs `rank.py` and emits `/app/PrajniX_sandbox.csv` plus `/app/PrajniX_sandbox.xlsx`. Its console output includes runtime, CSV SHA-256, and XLSX fidelity checks.
 
 ## Compute environment
 

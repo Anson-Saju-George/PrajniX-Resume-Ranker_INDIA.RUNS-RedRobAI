@@ -15,12 +15,14 @@ python rank.py --candidates ./candidates.jsonl --out ./PrajniX.csv
 
 ## Performance & Compute
 
-| Step | Clean-room runtime | Five-minute budget treatment |
+| Stage | Wall-clock time | Budget status |
 |---|---:|---|
-| Offline precompute (one-time) | ~92 seconds | Separate offline step; allowed to exceed the window and **does not count** against the judged ranking budget |
-| Ranking (judged step) | ~33 seconds | **The only step counted** against the five-minute budget; well under the limit |
+| Offline precompute | **~70–92 s** | Separate offline step; not counted |
+| Ranking | **~26–35 s CPU-only** | Well within the 5-minute limit |
 
-The judged ranking step is CPU-only, uses no network or GPU, and stays below 16 GB RAM. A byte-identical clean-room reproduction was verified from a fresh tracked-files-only checkout plus the supplied candidate inputs: the regenerated `PrajniX.csv` matched the approved SHA-256 `5E9E8DAC4ABC114D04D3DA08A02F2DF938968BDE67046B55275CD3CC486A7CB3`.
+> **Deterministic reproduction:** Ranking time varies slightly with system load, but repeated runs produce byte-identical output. Precompute is a separate offline step and is not counted against the five-minute ranking budget. No network or GPU is used during ranking.
+
+The judged ranking step stays below 16 GB RAM. A byte-identical clean-room reproduction was verified from a fresh tracked-files-only checkout plus the supplied candidate inputs: the regenerated `PrajniX.csv` matched the approved SHA-256 `5E9E8DAC4ABC114D04D3DA08A02F2DF938968BDE67046B55275CD3CC486A7CB3`.
 
 ## Architecture and methodology
 

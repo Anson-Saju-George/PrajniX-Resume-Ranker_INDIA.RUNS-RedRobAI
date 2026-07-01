@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import argparse
 import sys
+import time
 from pathlib import Path
 
 
@@ -38,6 +39,7 @@ def parse_args() -> argparse.Namespace:
 
 
 def main() -> int:
+    started = time.perf_counter()
     args = parse_args()
     candidates = _resolve(args.candidates, args.candidates.name)
     requested_jd = args.jd or candidates.with_name("job_description.docx")
@@ -48,6 +50,11 @@ def main() -> int:
         args.output_dir,
         args.dimensions,
         args.batch_size,
+    )
+    elapsed = time.perf_counter() - started
+    print(
+        f"Precompute runtime: {elapsed:.1f}s "
+        "(offline, one-time; not counted against the 5-min ranking budget)"
     )
     return 0
 
